@@ -9,6 +9,7 @@ aya-log-ebpf = "0.1.0"
 hackathon-ids-common = { path = "../hackathon-ids-common" }
 network-types = "0.0.5"
 
+
 [[bin]]
 name = "hackathon-ids"
 path = "src/main.rs"
