@@ -1,3 +1,6 @@
+
+use std::collections::HashSet;
+use std::net::Ipv4Addr;
 use anyhow::Context;
 use aya::maps::RingBuf;
 use aya::programs::{Xdp, XdpFlags};
@@ -6,15 +9,14 @@ use aya_log::BpfLogger;
 use clap::Parser;
 use hackathon_ids_common::EventInfo;
 use log::{debug, info, warn};
+use ml::data::IDSItem;
 use tokio::io::unix::AsyncFd;
 use tokio::signal;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use std::net::Ipv4Addr;
 
 use burn::backend::NdArray;
-use ml::data::IDSItem;
 
 #[derive(Debug, Parser)]
 struct Opt {
@@ -101,8 +103,12 @@ async fn main() -> Result<(), anyhow::Error> {
         let device = burn::backend::ndarray::NdArrayDevice::default();
         let artifact_dir = "./ml/guide.lock";
 
+        let mut attacks: HashSet<(u32,u16)> =  HashSet::new();
+
         /*let info = rx.recv().await.unwrap();
         info.*/
+        
+        
 
         loop {
             tokio::select! {
@@ -110,6 +116,8 @@ async fn main() -> Result<(), anyhow::Error> {
                   break;
               }
               Some(info) = rx.recv() => {
+                if attacks.get(&(info.ip_src, info.port_src)).is_none() { // is not blocked already
+                  
                   let total_len = info.total_len as f32;
                   let total_iat = info.total_iat as f32;
                   let num_pkts = info.num_packets as f32;
@@ -128,7 +136,10 @@ async fn main() -> Result<(), anyhow::Error> {
                   let output = ml::inference::infer::<MyBackend>(artifact_dir, device, item);
                   if output == 1 {
                     info!("Detected an attack from {}:{} to {}:{} ", Ipv4Addr::from(info.ip_src), info.port_src, Ipv4Addr::from(info.ip_dst), info.port_dst);
+                    attacks.insert((info.ip_src, info.port_src));
+                    
                   }
+                }
               }
             }
         }
