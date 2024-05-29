@@ -8,7 +8,7 @@ use aya_ebpf::{
     maps::{LruHashMap, RingBuf},
     programs::XdpContext,
 };
-use aya_log_ebpf::{info, log};
+use aya_log_ebpf::{debug, info};
 use hackathon_ids_common::EventInfo;
 
 use network_types::{
@@ -17,6 +17,7 @@ use network_types::{
     tcp::TcpHdr,
     udp::UdpHdr,
 };
+
 
 #[repr(C)]
 #[derive(Debug)]
@@ -30,12 +31,16 @@ struct FlowKey {
     port_dst: u16,
 }
 
+
+
+
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct FlowInfo {
     num_packets: u64,
     last_packet_ts: u64,
     total_len: u64,
+    total_iat: u64,
 }
 
 #[map(name = "FLOW_INFO_TABLE")]
@@ -142,43 +147,59 @@ fn try_hackathon_ids(ctx: XdpContext) -> Result<u32, ()> {
             .get_ptr_mut(&key)
             .or_else(|| FLOW_INFO_TABLE.get_ptr_mut(&reversed_key))
     } {
-        let total_packets = unsafe { (*data_ptr).num_packets + 1 };
-        let total_len = unsafe { (*data_ptr).total_len + iplen as u64 };
-        let delta = unsafe { ts - (*data_ptr).last_packet_ts };
-        unsafe {
-            (*data_ptr).num_packets = total_packets;
-            (*data_ptr).last_packet_ts = ts;
-            (*data_ptr).total_len = total_len;
-        }
+        if dest_port < source_port {
+            // DL / BW direction only
 
-        info!(
-            &ctx,
-            "inc flow {} {}:{} -> {}:{} packets number {} delta: {} total: {}",
-            proto as u8,
-            source_addr,
-            source_port,
-            dest_addr,
-            dest_port,
-            total_packets,
-            delta,
-            total_len
-        );
-
-        if let Some(mut buf) = EVENTS.reserve::<EventInfo>(0) {
+            let total_packets = unsafe { (*data_ptr).num_packets + 1 };
+            let total_len = unsafe { (*data_ptr).total_len + iplen as u64 };
+            let delta: u64 = unsafe { ts - (*data_ptr).last_packet_ts };
+            let total_delta = unsafe { (*data_ptr).total_iat + delta };
             unsafe {
-                let info = buf.as_mut_ptr();
-                (*info).num_packets = total_packets;
-                (*info).total_len = total_len;
-            };
+                (*data_ptr).num_packets = total_packets;
+                (*data_ptr).last_packet_ts = ts;
+                (*data_ptr).total_len = total_len;
+                (*data_ptr).total_iat = total_delta;
+            }
 
-            buf.submit(0);
+            debug!(
+                &ctx,
+                "{} inc flow {} {}:{} -> {}:{} packets number {} len: {} total_len: {} delta: {} total: {}",
+                ts,
+                proto as u8,
+                source_addr,
+                source_port,
+                dest_addr,
+                dest_port,
+                total_packets,
+                iplen,
+                total_len, 
+                delta,
+                total_len
+            );
+
+            if let Some(mut buf) = EVENTS.reserve::<EventInfo>(0) {
+                unsafe {
+                    let info = buf.as_mut_ptr();
+                    (*info).ip_src = source_addr;
+                    (*info).ip_dst = dest_addr;
+                    (*info).port_dst = dest_port;
+                    (*info).port_src = source_port;
+                    (*info).num_packets = total_packets;
+                    (*info).len = iplen as u64;
+                    (*info).total_len = total_len;
+                    (*info).iat = delta;
+                    (*info).total_iat = total_delta;
+                    
+
+                };
+
+                buf.submit(0);
+            }
         }
-
     } else {
         let data = FlowInfo {
-            num_packets: 0,
             last_packet_ts: ts,
-            total_len: 0,
+            ..Default::default()
         };
 
         unsafe {
@@ -187,7 +208,7 @@ fn try_hackathon_ids(ctx: XdpContext) -> Result<u32, ()> {
                 .expect("Error inserting flow info");
         }
 
-        info!(
+        debug!(
             &ctx,
             "new flow {} {}:{} -> {}:{}",
             proto as u8,
@@ -196,31 +217,7 @@ fn try_hackathon_ids(ctx: XdpContext) -> Result<u32, ()> {
             dest_addr,
             dest_port
         );
-
-        
     }
-
-    //
-    /*
-    info!(&ctx, " {} {:i}:{} -> {:i}:{}", match proto {
-        IpProto::Tcp => "TCP",
-        IpProto::Udp => "UDP",
-        _ => "Other",
-    } , source_addr, source_port, dest_addr, dest_port);
-
-    if let Some(mut buf) = EVENTS.reserve::<PacketInfo>(0) {
-        unsafe {
-            let pkt_info = buf.as_mut_ptr();
-            (*pkt_info).ip_dst = dest_addr;
-            (*pkt_info).ip_src = source_addr;
-            (*pkt_info).port_dst = dest_port;
-            (*pkt_info).port_src = source_port;
-            (*pkt_info).proto = proto as u8;
-         };
-
-        buf.submit(0);
-    }
-    */
 
     Ok(xdp_action::XDP_PASS)
 }
