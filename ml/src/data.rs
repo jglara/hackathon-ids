@@ -8,15 +8,15 @@ pub struct IDSItem {
     #[serde(rename = "Dst Port")]
     pub dst_port: u16,
     #[serde(rename = "Total Length of Bwd Packet")]
-    pub total_length_bwd_packet: u32,
+    pub total_length_bwd_packet: f32,
     #[serde(rename = "Bwd IAT Total")]
-    pub bwd_iat_total: f64,
+    pub bwd_iat_total: f32,
     #[serde(rename = "Bwd IAT Mean")]
-    pub bwd_iat_mean: f64,
+    pub bwd_iat_mean: f32,
     #[serde(rename = "Bwd Packet Length Mean")]
-    pub bwd_packet_length_mean: f64,
+    pub bwd_packet_length_mean: f32,
     #[serde(rename = "Bwd Packet Length Std")]
-    pub bwd_packet_length_std: f64,
+    pub bwd_packet_length_std: f32,
     #[serde(rename = "Label")]
     pub label: String,
 }

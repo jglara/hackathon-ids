@@ -1,23 +1,20 @@
-use core::net;
-
 use anyhow::Context;
 use aya::maps::RingBuf;
 use aya::programs::{Xdp, XdpFlags};
 use aya::{include_bytes_aligned, Bpf};
 use aya_log::BpfLogger;
 use clap::Parser;
+use hackathon_ids_common::EventInfo;
 use log::{debug, info, warn};
 use tokio::io::unix::AsyncFd;
 use tokio::signal;
-use hackathon_ids_common::EventInfo;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use burn::tensor::Tensor;
-use burn::backend::Wgpu;
+use std::net::Ipv4Addr;
 
-// Type alias for the backend to use.
-type Backend = Wgpu;
+use burn::backend::NdArray;
+use ml::data::IDSItem;
 
 #[derive(Debug, Parser)]
 struct Opt {
@@ -63,7 +60,6 @@ async fn main() -> Result<(), anyhow::Error> {
     program.attach(&opt.iface, XdpFlags::default())
         .context("failed to attach the XDP program with default flags - try changing XdpFlags::default() to XdpFlags::SKB_MODE")?;
 
-
     let (tx, mut rx) = mpsc::channel(1024);
 
     let cancel_i = CancellationToken::new();
@@ -85,62 +81,58 @@ async fn main() -> Result<(), anyhow::Error> {
 
                     while let Some(ring_event) = events.next() {
                         // process the event
-                        /*
-                        let (head, body, _tail) = unsafe { ring_event.align_to::<PacketInfo>() };
-                        assert!(head.is_empty(), "Data was not aligned");
-                        let pkt_info = &body[0];
-                        */
-        
+
+
                         let ptr = ring_event.as_ptr() as *const EventInfo;
                         let info = unsafe { ptr.read_unaligned() };
-        
-                        info!("Received some event! {:?}", info);
+
+                        debug!("Received some event! {:?}", info);
                         tx.send(info).await.unwrap();
-                    }        
+                    }
                 }
             }
-            /* 
-            let mut guard = events_fd.readable_mut().await.unwrap();
-            let events = guard.get_inner_mut();
-
-            while let Some(ring_event) = events.next() {
-                // process the event
-                /*
-                let (head, body, _tail) = unsafe { ring_event.align_to::<PacketInfo>() };
-                assert!(head.is_empty(), "Data was not aligned");
-                let pkt_info = &body[0];
-                */
-
-                let ptr = ring_event.as_ptr() as *const EventInfo;
-                let info = unsafe { ptr.read_unaligned() };
-
-                info!("Received some event! {:?}", info);
-            }*/
         }
     });
 
     let task_2 = tokio::spawn(async move {
-        loop { 
-          tokio::select! {
-            _ = cancel_task_2.cancelled() => {
-                break;
-            }
-            Some(info) = rx.recv() => {
+        type MyBackend = NdArray;
+        //type MyAutodiffBackend = Autodiff<MyBackend>;
 
-                let device = Default::default();
-                // Creation of two tensors, the first with explicit values and the second one with ones, with the same shape as the first
-                let tensor_1 = Tensor::<Backend, 2>::from_data([[2., 3.], [4., 5.]], &device);
-                let tensor_2 = Tensor::<Backend, 2>::ones_like(&tensor_1);
-        
+        let device = burn::backend::ndarray::NdArrayDevice::default();
+        let artifact_dir = "./ml/guide.lock";
 
-                info!("Processing event {:?} {} ", info, tensor_1+tensor_2);
+        /*let info = rx.recv().await.unwrap();
+        info.*/
+
+        loop {
+            tokio::select! {
+              _ = cancel_task_2.cancelled() => {
+                  break;
+              }
+              Some(info) = rx.recv() => {
+                  let total_len = info.total_len as f32;
+                  let total_iat = info.total_iat as f32;
+                  let num_pkts = info.num_packets as f32;
+                  let len_mean = total_len / num_pkts;
+
+                  let item= IDSItem {
+                    dst_port: info.port_dst,
+                    total_length_bwd_packet: total_len,
+                    bwd_iat_total: total_iat,
+                    bwd_iat_mean: total_iat / num_pkts,
+                    bwd_packet_length_mean: len_mean,
+                    bwd_packet_length_std: (info.len as f32 - len_mean).abs() / num_pkts,
+                    label: "".to_string() };
+
+                  debug!("Received {item:?}");
+                  let output = ml::inference::infer::<MyBackend>(artifact_dir, device, item);
+                  if output == 1 {
+                    info!("Detected an attack from {}:{} to {}:{} ", Ipv4Addr::from(info.ip_src), info.port_src, Ipv4Addr::from(info.ip_dst), info.port_dst);
+                  }
+              }
             }
-          }
         }
-
     });
-
-    
 
     info!("Waiting for Ctrl-C...");
     signal::ctrl_c().await?;

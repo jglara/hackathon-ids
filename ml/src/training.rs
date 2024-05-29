@@ -3,7 +3,7 @@ use crate::{
     model::{Model, ModelConfig},
 };
 use burn::{
-    data::dataloader::DataLoaderBuilder, nn::loss::CrossEntropyLossConfig, optim::AdamConfig, prelude::*, record::CompactRecorder, tensor::backend::AutodiffBackend, train::{
+    data::dataloader::DataLoaderBuilder, optim::AdamConfig, prelude::*, record::CompactRecorder, tensor::backend::AutodiffBackend, train::{
         metric::{AccuracyMetric, LossMetric},
         ClassificationOutput, LearnerBuilder, TrainOutput, TrainStep, ValidStep,
     }
