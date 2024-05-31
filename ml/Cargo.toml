@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-burn = { version = "0.13.2", features = ["wgpu", "train"] }
+burn = { version = "0.13.2", features = ["train", "ndarray"] }
 serde = { version = "1.0", features = ["derive"]}
 serde_derive = "1.0"
 csv = "1.1"

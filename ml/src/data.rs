@@ -80,10 +80,12 @@ pub struct IDSDataset {
 }
 
 impl IDSDataset {
+
     pub fn train() -> Self {
+        // TODO: fix hardcoded paths
         IDSDataset {
             dataset: InMemDataset::from_csv(
-                "data/train.csv",
+                "./ml/data/train.csv",
                 ReaderBuilder::new().has_headers(true),
             )
             .unwrap(),
@@ -93,7 +95,7 @@ impl IDSDataset {
     pub fn test() -> Self {
         IDSDataset {
             dataset: InMemDataset::from_csv(
-                "data/test.csv",
+                "./ml/data/test.csv",
                 ReaderBuilder::new().has_headers(true),
             )
             .unwrap(),

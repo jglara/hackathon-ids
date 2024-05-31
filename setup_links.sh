@@ -10,4 +10,4 @@ ip link set dev ns2-veth up
 
 
 # tcp replay
-ip netns exec ns1 tcpreplay -i ns1-veth -t -K smallFlows.pcap 
+#ip netns exec ns1 tcpreplay -i ns1-veth -t -K smallFlows.pcap 

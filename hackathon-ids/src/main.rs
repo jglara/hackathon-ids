@@ -59,7 +59,7 @@ async fn main() -> Result<(), anyhow::Error> {
     }
     let program: &mut Xdp = bpf.program_mut("hackathon_ids").unwrap().try_into()?;
     program.load()?;
-    program.attach(&opt.iface, XdpFlags::default())
+    program.attach(&opt.iface, XdpFlags::SKB_MODE)
         .context("failed to attach the XDP program with default flags - try changing XdpFlags::default() to XdpFlags::SKB_MODE")?;
 
     let (tx, mut rx) = mpsc::channel(1024);
@@ -103,7 +103,7 @@ async fn main() -> Result<(), anyhow::Error> {
         let device = burn::backend::ndarray::NdArrayDevice::default();
         let artifact_dir = "./ml/guide.lock";
 
-        let mut attacks: HashSet<(u32,u16)> =  HashSet::new();
+        let mut attacks: HashSet<u32> =  HashSet::new();
 
         /*let info = rx.recv().await.unwrap();
         info.*/
@@ -116,7 +116,7 @@ async fn main() -> Result<(), anyhow::Error> {
                   break;
               }
               Some(info) = rx.recv() => {
-                if attacks.get(&(info.ip_src, info.port_src)).is_none() { // is not blocked already
+                if attacks.get(&info.ip_src).is_none() { // is not blocked already
                   
                   let total_len = info.total_len as f32;
                   let total_iat = info.total_iat as f32;
@@ -136,7 +136,7 @@ async fn main() -> Result<(), anyhow::Error> {
                   let output = ml::inference::infer::<MyBackend>(artifact_dir, device, item);
                   if output == 1 {
                     info!("Detected an attack from {}:{} to {}:{} ", Ipv4Addr::from(info.ip_src), info.port_src, Ipv4Addr::from(info.ip_dst), info.port_dst);
-                    attacks.insert((info.ip_src, info.port_src));
+                    attacks.insert(info.ip_src);
                     
                   }
                 }

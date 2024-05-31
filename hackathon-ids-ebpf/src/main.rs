@@ -81,19 +81,19 @@ fn try_hackathon_ids(ctx: XdpContext) -> Result<u32, ()> {
     match unsafe { (*ethhdr).ether_type } {
         EtherType::Ipv4 => {}
         EtherType::Ipv6 => {
-            info!(&ctx, "IPV6");
+            debug!(&ctx, "IPV6");
             return Ok(xdp_action::XDP_PASS);
         }
         EtherType::Loop => {
-            info!(&ctx, "Loop");
+            debug!(&ctx, "Loop");
             return Ok(xdp_action::XDP_PASS);
         }
         EtherType::FibreChannel => {
-            info!(&ctx, "fibre");
+            debug!(&ctx, "fibre");
             return Ok(xdp_action::XDP_PASS);
         }
         _ => {
-            info!(&ctx, "other");
+            debug!(&ctx, "other");
             return Ok(xdp_action::XDP_PASS);
         }
     }
@@ -147,8 +147,8 @@ fn try_hackathon_ids(ctx: XdpContext) -> Result<u32, ()> {
             .get_ptr_mut(&key)
             .or_else(|| FLOW_INFO_TABLE.get_ptr_mut(&reversed_key))
     } {
-        if dest_port < source_port {
-            // DL / BW direction only
+        if dest_port < source_port && unsafe { (*data_ptr).num_packets < 10 } {
+            // DL / BW direction only for a number of packets
 
             let total_packets = unsafe { (*data_ptr).num_packets + 1 };
             let total_len = unsafe { (*data_ptr).total_len + iplen as u64 };
